@@ -273,6 +273,50 @@ def write_plane_triangles_vtk(
         for ia, ib, ic in polys:
             f.write(f"3 {ia} {ib} {ic}\n")
 
+
+def write_rectilinear_grid_vtk(filename, x, y, z, ascii=True):
+    """
+    Write a 3D rectilinear grid to a legacy VTK file.
+
+    Parameters
+    ----------
+    filename : str
+        Output VTK filename (e.g. 'grid.vtk')
+    x, y, z : array-like
+        1D coordinate arrays defining the grid
+    ascii : bool
+        Write ASCII VTK (recommended)
+    """
+
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    z = np.asarray(z, dtype=float)
+
+    nx, ny, nz = len(x), len(y), len(z)
+
+    with open(filename, "w") as f:
+        f.write("# vtk DataFile Version 3.0\n")
+        f.write("Rectilinear grid\n")
+        f.write("ASCII\n" if ascii else "BINARY\n")
+        f.write("DATASET RECTILINEAR_GRID\n")
+        f.write(f"DIMENSIONS {nx} {ny} {nz}\n")
+
+        # X coordinates
+        f.write(f"X_COORDINATES {nx} float\n")
+        for val in x:
+            f.write(f"{val}\n")
+
+        # Y coordinates
+        f.write(f"Y_COORDINATES {ny} float\n")
+        for val in y:
+            f.write(f"{val}\n")
+
+        # Z coordinates
+        f.write(f"Z_COORDINATES {nz} float\n")
+        for val in z:
+            f.write(f"{val}\n")
+
+
 ###############################################################################
 
 def test1():
@@ -308,6 +352,8 @@ def test1():
 
     write_plane_triangles_vtk("triangles.vtk", cell_triangles,
         x, y, z, ascii=True)
+    
+    write_rectilinear_grid_vtk("grid.vtk", x, y, z, ascii=True)
 
 if __name__ == '__main__':
     test1()
