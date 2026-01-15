@@ -109,6 +109,95 @@ def plane_grid_intersections(x, y, z, ra, rb, rc, tol=1e-10):
 
     return result
 
+import numpy as np
+
+def triangulate_plane_cell_intersections(intersections, plane_normal, tol=1e-12):
+    """
+    Triangulate plane–cell intersection polygons.
+
+    Parameters
+    ----------
+    intersections : dict
+        {(i,j,k): [p0, p1, ...]} where p are 3D parametric points
+    plane_normal : array-like, shape (3,)
+        Normal vector of the plane (orientation reference)
+    tol : float
+        Numerical tolerance
+
+    Returns
+    -------
+    dict
+        {(i,j,k): [(a,b,c), (d,e,f), ...]} where a,b,c are 3D parametric points
+    """
+
+    plane_normal = np.asarray(plane_normal)
+    plane_normal = plane_normal / np.linalg.norm(plane_normal)
+
+    triangles = {}
+
+    for cell, pts in intersections.items():
+        pts = np.asarray(pts)
+
+        if len(pts) < 3:
+            continue
+
+        # ------------------------------------------------------------------
+        # Compute centroid
+        # ------------------------------------------------------------------
+        centroid = pts.mean(axis=0)
+
+        # ------------------------------------------------------------------
+        # Construct local 2D basis in the plane
+        # ------------------------------------------------------------------
+        # Pick a vector not parallel to the normal
+        ref = np.array([1.0, 0.0, 0.0])
+        if abs(np.dot(ref, plane_normal)) > 0.9:
+            ref = np.array([0.0, 1.0, 0.0])
+
+        e1 = np.cross(plane_normal, ref)
+        e1 /= np.linalg.norm(e1)
+        e2 = np.cross(plane_normal, e1)
+
+        # ------------------------------------------------------------------
+        # Project points into 2D plane coordinates
+        # ------------------------------------------------------------------
+        proj = np.array([
+            [np.dot(p - centroid, e1), np.dot(p - centroid, e2)]
+            for p in pts
+        ])
+
+        # ------------------------------------------------------------------
+        # Sort vertices counterclockwise
+        # ------------------------------------------------------------------
+        angles = np.arctan2(proj[:,1], proj[:,0])
+        order = np.argsort(angles)
+        ordered_pts = pts[order]
+
+        # ------------------------------------------------------------------
+        # Fan triangulation
+        # ------------------------------------------------------------------
+        cell_tris = []
+        p0 = ordered_pts[0]
+
+        for i in range(1, len(ordered_pts) - 1):
+            a = p0
+            b = ordered_pts[i]
+            c = ordered_pts[i+1]
+
+            # ------------------------------------------------------------------
+            # Enforce consistent orientation
+            # ------------------------------------------------------------------
+            n_tri = np.cross(b - a, c - a)
+            if np.dot(n_tri, plane_normal) < 0:
+                b, c = c, b
+
+            cell_tris.append((a, b, c))
+
+        triangles[cell] = cell_tris
+
+    return triangles
+
+
 ###############################################################################
 
 def test1():
@@ -126,10 +215,21 @@ def test1():
     # compute the intersections
     intersections = plane_grid_intersections(x, y, z, ra, rb, rc)
 
+    print("intersection points")
     for cell, pts in intersections.items():
         print(cell)
         for p in pts:
-            print("  ", p)
+            print(f"  ", p)
+
+    plane_normal = np.cross(rb - ra, rc - ra)
+    plane_normal /= np.sqrt(plane_normal.dot(plane_normal))
+    cell_triangles = triangulate_plane_cell_intersections(intersections, plane_normal)
+
+    print("cell triangles")
+    for cell, triangles in cell_triangles.items():
+        print(cell)
+        for triangle in triangles:
+            print("  ", triangle)
 
 if __name__ == '__main__':
     test1()
