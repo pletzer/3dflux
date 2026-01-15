@@ -1,6 +1,15 @@
 import numpy as np
 from itertools import combinations
 
+def parametric_to_physical(p, i, j, k, x, y, z):
+    u, v, w = p
+    return np.array([
+        x[i] + u * (x[i+1] - x[i]),
+        y[j] + v * (y[j+1] - y[j]),
+        z[k] + w * (z[k+1] - z[k]),
+    ])
+
+
 def plane_from_points(ra, rb, rc):
     """
     Return (n, d) such that n·x + d = 0 defines the plane
@@ -109,7 +118,6 @@ def plane_grid_intersections(x, y, z, ra, rb, rc, tol=1e-10):
 
     return result
 
-import numpy as np
 
 def triangulate_plane_cell_intersections(intersections, plane_normal, tol=1e-12):
     """
@@ -198,6 +206,73 @@ def triangulate_plane_cell_intersections(intersections, plane_normal, tol=1e-12)
     return triangles
 
 
+def write_plane_triangles_vtk(
+    filename,
+    triangles,
+    x, y, z,
+    ascii=True
+):
+    """
+    Write triangulated plane–grid intersections to a VTK PolyData file.
+
+    Parameters
+    ----------
+    filename : str
+        Output VTK filename (e.g. 'slice.vtk')
+    triangles : dict
+        {(i,j,k): [(a,b,c), ...]} in parametric coordinates
+    x, y, z : array-like
+        Grid coordinate arrays
+    ascii : bool
+        Write ASCII VTK (recommended for debugging)
+    """
+
+    points = []
+    polys = []
+
+    point_map = {}   # maps tuple(x,y,z) -> global point index
+
+    def get_point_id(p):
+        key = tuple(np.round(p, 12))  # tolerance-based hashing
+        if key not in point_map:
+            point_map[key] = len(points)
+            points.append(p)
+        return point_map[key]
+
+    # ------------------------------------------------------------------
+    # Collect points and triangles
+    # ------------------------------------------------------------------
+    for (i, j, k), tris in triangles.items():
+        for a, b, c in tris:
+            pa = parametric_to_physical(a, i, j, k, x, y, z)
+            pb = parametric_to_physical(b, i, j, k, x, y, z)
+            pc = parametric_to_physical(c, i, j, k, x, y, z)
+
+            ia = get_point_id(pa)
+            ib = get_point_id(pb)
+            ic = get_point_id(pc)
+
+            polys.append((ia, ib, ic))
+
+    # ------------------------------------------------------------------
+    # Write legacy VTK PolyData
+    # ------------------------------------------------------------------
+    with open(filename, "w") as f:
+        f.write("# vtk DataFile Version 3.0\n")
+        f.write("Plane-grid intersection triangulation\n")
+        f.write("ASCII\n" if ascii else "BINARY\n")
+        f.write("DATASET POLYDATA\n")
+
+        # Points
+        f.write(f"POINTS {len(points)} float\n")
+        for p in points:
+            f.write(f"{p[0]} {p[1]} {p[2]}\n")
+
+        # Polygons
+        f.write(f"POLYGONS {len(polys)} {4 * len(polys)}\n")
+        for ia, ib, ic in polys:
+            f.write(f"3 {ia} {ib} {ic}\n")
+
 ###############################################################################
 
 def test1():
@@ -230,6 +305,9 @@ def test1():
         print(cell)
         for triangle in triangles:
             print("  ", triangle)
+
+    write_plane_triangles_vtk("triangles.vtk", cell_triangles,
+        x, y, z, ascii=True)
 
 if __name__ == '__main__':
     test1()
